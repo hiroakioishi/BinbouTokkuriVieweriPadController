@@ -2858,8 +2858,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2824573268c3cf542bf56c1a1edc87cd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ControlOscSender
-  IPAddress: 127.0.0.1
-  OscPort: 6666
+  IPAddress: 192.168.0.94
+  OscPort: 9000
   TokkuriType: 0
   ModelViewMode: 0
   Alignment: 0

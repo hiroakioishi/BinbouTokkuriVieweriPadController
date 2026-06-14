@@ -1,15 +1,17 @@
-﻿using UnityEngine;
-using OscJack;
-//using UnityEditor.PackageManager;
-//using UnityEngine.UIElements;
+﻿using System;
+using System.Net.Sockets;
+using UnityEngine;
 using UnityEngine.UI;
+using OscJack;
 
 public class ControlOscSender : MonoBehaviour
 {
+    [Header("OSC Settings")]
     public string IPAddress = "127.0.0.1";
-    public int    OscPort = 6666;
+    public int OscPort = 6666;
 
-    OscClient _oscClient;
+    private OscClient _oscClient;
+    private bool _isQuitting = false;
 
     public enum 徳利タイプ
     {
@@ -18,16 +20,19 @@ public class ControlOscSender : MonoBehaviour
         丹波立杭焼,
         有田焼系
     }
+
     public enum モデル表示形式
     {
         通常3Dモデル,
         円筒展開平面
     }
+
     public enum 並べ方
     {
         指定の位置で表示,
         ランダムな並びで表示
     }
+
     public enum 表示モード
     {
         素面,
@@ -35,77 +40,148 @@ public class ControlOscSender : MonoBehaviour
     }
 
     [Header("フラグ")]
-    public 徳利タイプ     TokkuriType   = 徳利タイプ.すべて;
+    public 徳利タイプ TokkuriType = 徳利タイプ.すべて;
     public モデル表示形式 ModelViewMode = モデル表示形式.通常3Dモデル;
-    public 並べ方         Alignment     = 並べ方.指定の位置で表示;
-    public 表示モード     ViewMode      = 表示モード.素面;
+    public 並べ方 Alignment = 並べ方.指定の位置で表示;
+    public 表示モード ViewMode = 表示モード.素面;
 
     [Header("Toggle References")]
+
     [Header("TokkuriType")]
-    [SerializeField]
-    Toggle ToggleTokkuriType_All;
-    [SerializeField]
-    Toggle ToggleTokkuriType_TakadaMinou;
-    [SerializeField]
-    Toggle ToggleTokkuriType_TanbaTachikui;
-    [SerializeField]
-    Toggle ToggleTokkuriType_Arita;
+    [SerializeField] private Toggle ToggleTokkuriType_All;
+    [SerializeField] private Toggle ToggleTokkuriType_TakadaMinou;
+    [SerializeField] private Toggle ToggleTokkuriType_TanbaTachikui;
+    [SerializeField] private Toggle ToggleTokkuriType_Arita;
 
     [Header("ModelViewMode")]
-    [SerializeField]
-    Toggle ToggleModelViewMode_Default;
-    [SerializeField]
-    Toggle ToggleModelViewMode_UnwrapMap;
+    [SerializeField] private Toggle ToggleModelViewMode_Default;
+    [SerializeField] private Toggle ToggleModelViewMode_UnwrapMap;
 
     [Header("AlignmentMode")]
-    [SerializeField]
-    Toggle ToggleAlignmentMode_Default;
-    [SerializeField]
-    Toggle ToggleAlignmentMode_Random;
+    [SerializeField] private Toggle ToggleAlignmentMode_Default;
+    [SerializeField] private Toggle ToggleAlignmentMode_Random;
 
     [Header("ViewMode")]
-    [SerializeField]
-    Toggle ToggleViewMode_Shirafu;
-    [SerializeField]
-    Toggle ToggleViewMode_Meitei;
+    [SerializeField] private Toggle ToggleViewMode_Shirafu;
+    [SerializeField] private Toggle ToggleViewMode_Meitei;
 
-
-
-    private void Start()
+    private void Awake()
     {
-        _oscClient = new OscClient(IPAddress, OscPort);
+        CreateOscClient();
+    }
 
+    private void OnDestroy()
+    {
+        DisposeOscClient();
+    }
+
+    private void OnApplicationQuit()
+    {
+        _isQuitting = true;
+        DisposeOscClient();
+    }
+
+    private void CreateOscClient()
+    {
+        DisposeOscClient();
+
+        try
+        {
+            _oscClient = new OscClient(IPAddress, OscPort);
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"OscClient の生成に失敗しました: {e.Message}");
+            _oscClient = null;
+        }
+    }
+
+    private void DisposeOscClient()
+    {
+        if (_oscClient == null)
+            return;
+
+        try
+        {
+            _oscClient.Dispose();
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"OscClient の破棄時に例外が発生しました: {e.Message}");
+        }
+        finally
+        {
+            _oscClient = null;
+        }
+    }
+
+    private void SendOsc(string address, int value = 1)
+    {
+        if (_isQuitting)
+            return;
+
+        if (_oscClient == null)
+        {
+            CreateOscClient();
+        }
+
+        if (_oscClient == null)
+        {
+            Debug.LogError($"OSC送信に失敗しました。OscClient が生成されていません。Address: {address}");
+            return;
+        }
+
+        try
+        {
+            _oscClient.Send(address, value);
+        }
+        catch (SocketException e)
+        {
+            Debug.LogWarning($"OSC送信時に SocketException が発生しました。OscClient を再生成します。Address: {address}, Error: {e.Message}");
+
+            CreateOscClient();
+
+            if (_oscClient == null)
+                return;
+
+            try
+            {
+                _oscClient.Send(address, value);
+            }
+            catch (Exception retryException)
+            {
+                Debug.LogError($"OSC再送信に失敗しました。Address: {address}, Error: {retryException.Message}");
+            }
+        }
+        catch (ObjectDisposedException e)
+        {
+            Debug.LogWarning($"OscClient がすでに破棄されていました。OscClient を再生成します。Address: {address}, Error: {e.Message}");
+
+            CreateOscClient();
+
+            if (_oscClient == null)
+                return;
+
+            try
+            {
+                _oscClient.Send(address, value);
+            }
+            catch (Exception retryException)
+            {
+                Debug.LogError($"OSC再送信に失敗しました。Address: {address}, Error: {retryException.Message}");
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"OSC送信に失敗しました。Address: {address}, Error: {e.Message}");
+        }
     }
 
     public void TogglePressed()
     {
-        if (ToggleTokkuriType_All != null)
-            if (ToggleTokkuriType_All.isOn)
-                TokkuriType = 徳利タイプ.すべて;
-        if (ToggleTokkuriType_TakadaMinou != null)
-            if (ToggleTokkuriType_TakadaMinou.isOn)
-                TokkuriType = 徳利タイプ.高田美濃焼;
-        if (ToggleTokkuriType_TanbaTachikui != null)
-            if (ToggleTokkuriType_TanbaTachikui.isOn)
-                TokkuriType = 徳利タイプ.丹波立杭焼;
-        if (ToggleTokkuriType_Arita != null)
-            if (ToggleTokkuriType_Arita.isOn)
-                TokkuriType = 徳利タイプ.有田焼系;
-
-        if (ToggleModelViewMode_Default != null)
-            if (ToggleModelViewMode_Default.isOn)
-                ModelViewMode = モデル表示形式.通常3Dモデル;
-        if (ToggleModelViewMode_UnwrapMap != null)
-            if (ToggleModelViewMode_UnwrapMap.isOn)
-                ModelViewMode = モデル表示形式.円筒展開平面;
-
-        if (ToggleAlignmentMode_Default != null)
-            if (ToggleAlignmentMode_Default.isOn)
-                Alignment = 並べ方.指定の位置で表示;
-        if (ToggleAlignmentMode_Random != null)
-            if (ToggleAlignmentMode_Random.isOn)
-                Alignment = 並べ方.ランダムな並びで表示;
-
+        UpdateTokkuriTypeFromToggle();
+        UpdateModelViewModeFromToggle();
+        UpdateAlignmentFromToggle();
 
         if (TokkuriType == 徳利タイプ.すべて)
         {
@@ -124,7 +200,6 @@ public class ControlOscSender : MonoBehaviour
             {
                 if (Alignment == 並べ方.指定の位置で表示)
                 {
-                    // やらないほうがよいかも？
                     TransformUnwrapMapOnSpecificIndexPosition();
                 }
                 else if (Alignment == 並べ方.ランダムな並びで表示)
@@ -143,7 +218,6 @@ public class ControlOscSender : MonoBehaviour
                 }
                 else if (Alignment == 並べ方.ランダムな並びで表示)
                 {
-                    // 変更必要
                     TransformDefaultOnlyMinouOnAutoPackedGridPosition();
                 }
             }
@@ -155,7 +229,6 @@ public class ControlOscSender : MonoBehaviour
                 }
                 else if (Alignment == 並べ方.ランダムな並びで表示)
                 {
-                    // 変更必要
                     TransformUnwrapMapOnlyMinouyakiOnAutoPackedGridPosition();
                 }
             }
@@ -170,7 +243,6 @@ public class ControlOscSender : MonoBehaviour
                 }
                 else if (Alignment == 並べ方.ランダムな並びで表示)
                 {
-                    // 変更必要
                     TransformDefaultOnlyTanbaTachikuiyakiOnAutoPackedGridPosition();
                 }
             }
@@ -182,7 +254,6 @@ public class ControlOscSender : MonoBehaviour
                 }
                 else if (Alignment == 並べ方.ランダムな並びで表示)
                 {
-                    // 変更必要
                     TransformUnwrapMapOnlyTanbaTachikuiyakiOnAutoPackedGridPosition();
                 }
             }
@@ -197,7 +268,6 @@ public class ControlOscSender : MonoBehaviour
                 }
                 else if (Alignment == 並べ方.ランダムな並びで表示)
                 {
-                    // 変更必要
                     TransformDefaultOnlyImariAritaOnAutoPackedGridPosition();
                 }
             }
@@ -209,7 +279,6 @@ public class ControlOscSender : MonoBehaviour
                 }
                 else if (Alignment == 並べ方.ランダムな並びで表示)
                 {
-                    // 変更必要
                     TransformUnwrapMapOnlyImariAritaOnAutoPackedGridPosition();
                 }
             }
@@ -218,93 +287,146 @@ public class ControlOscSender : MonoBehaviour
 
     public void TogglePressedViewMode()
     {
-        if (ToggleViewMode_Shirafu != null)
-            if (ToggleViewMode_Shirafu.isOn)
-                ViewMode = 表示モード.素面;
-        if (ToggleViewMode_Meitei != null)
-            if (ToggleViewMode_Meitei.isOn)
-                ViewMode = 表示モード.酩酊;
+        UpdateViewModeFromToggle();
 
         if (ViewMode == 表示モード.素面)
         {
-            _oscClient.Send("/EnableEmission", 1);
+            SendOsc("/EnableEmission");
         }
         else if (ViewMode == 表示モード.酩酊)
         {
-            _oscClient.Send("/DisableEmission", 1);
+            SendOsc("/DisableEmission");
         }
     }
 
+    private void UpdateTokkuriTypeFromToggle()
+    {
+        if (ToggleTokkuriType_All != null && ToggleTokkuriType_All.isOn)
+        {
+            TokkuriType = 徳利タイプ.すべて;
+        }
+        else if (ToggleTokkuriType_TakadaMinou != null && ToggleTokkuriType_TakadaMinou.isOn)
+        {
+            TokkuriType = 徳利タイプ.高田美濃焼;
+        }
+        else if (ToggleTokkuriType_TanbaTachikui != null && ToggleTokkuriType_TanbaTachikui.isOn)
+        {
+            TokkuriType = 徳利タイプ.丹波立杭焼;
+        }
+        else if (ToggleTokkuriType_Arita != null && ToggleTokkuriType_Arita.isOn)
+        {
+            TokkuriType = 徳利タイプ.有田焼系;
+        }
+    }
+
+    private void UpdateModelViewModeFromToggle()
+    {
+        if (ToggleModelViewMode_Default != null && ToggleModelViewMode_Default.isOn)
+        {
+            ModelViewMode = モデル表示形式.通常3Dモデル;
+        }
+        else if (ToggleModelViewMode_UnwrapMap != null && ToggleModelViewMode_UnwrapMap.isOn)
+        {
+            ModelViewMode = モデル表示形式.円筒展開平面;
+        }
+    }
+
+    private void UpdateAlignmentFromToggle()
+    {
+        if (ToggleAlignmentMode_Default != null && ToggleAlignmentMode_Default.isOn)
+        {
+            Alignment = 並べ方.指定の位置で表示;
+        }
+        else if (ToggleAlignmentMode_Random != null && ToggleAlignmentMode_Random.isOn)
+        {
+            Alignment = 並べ方.ランダムな並びで表示;
+        }
+    }
+
+    private void UpdateViewModeFromToggle()
+    {
+        if (ToggleViewMode_Shirafu != null && ToggleViewMode_Shirafu.isOn)
+        {
+            ViewMode = 表示モード.素面;
+        }
+        else if (ToggleViewMode_Meitei != null && ToggleViewMode_Meitei.isOn)
+        {
+            ViewMode = 表示モード.酩酊;
+        }
+    }
 
     public void TransformDefault()
     {
-        _oscClient.Send("/TransformDefault", 1);
+        SendOsc("/TransformDefault");
     }
 
     public void TransformUnwrapMap()
     {
-        _oscClient.Send("/TransformUnwrapMap", 1);
+        SendOsc("/TransformUnwrapMap");
     }
 
     public void TransformDefaultOnSpecificIndexPosition()
     {
-        _oscClient.Send("/TransformDefaultOnSpecificIndexPosition", 1);
+        SendOsc("/TransformDefaultOnSpecificIndexPosition");
     }
 
     public void TransformUnwrapMapOnSpecificIndexPosition()
     {
-        _oscClient.Send("/TransformUnwrapMapOnSpecificIndexPosition", 1);
+        SendOsc("/TransformUnwrapMapOnSpecificIndexPosition");
     }
 
     public void TransformDefaultOnRandomPosition()
     {
-        _oscClient.Send("/TransformDefaultOnRandomPosition", 1);
+        SendOsc("/TransformDefaultOnRandomPosition");
     }
 
     public void TransformUnwrapMapOnRandomPosition()
     {
-        _oscClient.Send("/TransformUnwrapMapOnRandomPosition", 1);
+        SendOsc("/TransformUnwrapMapOnRandomPosition");
     }
 
     public void TransformDefaultOnlyMinouOnAutoPackedGridPosition()
     {
-        _oscClient.Send("/TransformDefaultOnlyMinouOnAutoPackedGridPosition", 1);
+        SendOsc("/TransformDefaultOnlyMinouOnAutoPackedGridPosition");
     }
 
     public void TransformDefaultOnlyTanbaTachikuiyakiOnAutoPackedGridPosition()
     {
-        _oscClient.Send("/TransformDefaultOnlyTanbaTachikuiyakiOnAutoPackedGridPosition", 1);
+        SendOsc("/TransformDefaultOnlyTanbaTachikuiyakiOnAutoPackedGridPosition");
     }
 
     public void TransformDefaultOnlyImariAritaOnAutoPackedGridPosition()
     {
-        _oscClient.Send("/TransformDefaultOnlyImariAritaOnAutoPackedGridPosition", 1);
+        SendOsc("/TransformDefaultOnlyImariAritaOnAutoPackedGridPosition");
     }
 
     public void TransformUnwrapMapOnlyMinouyakiOnAutoPackedGridPosition()
     {
-        _oscClient.Send("/TransformUnwrapMapOnlyMinouyakiOnAutoPackedGridPosition", 1);
+        SendOsc("/TransformUnwrapMapOnlyMinouyakiOnAutoPackedGridPosition");
     }
 
     public void TransformUnwrapMapOnlyTanbaTachikuiyakiOnAutoPackedGridPosition()
     {
-        _oscClient.Send("/TransformUnwrapMapOnlyTanbaTachikuiyakiOnAutoPackedGridPosition", 1);
+        SendOsc("/TransformUnwrapMapOnlyTanbaTachikuiyakiOnAutoPackedGridPosition");
     }
 
     public void TransformUnwrapMapOnlyImariAritaOnAutoPackedGridPosition()
     {
-        _oscClient.Send("/TransformUnwrapMapOnlyImariAritaOnAutoPackedGridPosition", 1);
+        SendOsc("/TransformUnwrapMapOnlyImariAritaOnAutoPackedGridPosition");
     }
 
-    /*
     public void EnableEmission()
     {
-        _oscClient.Send("/EnableEmission", 1);
+        SendOsc("/EnableEmission");
     }
 
     public void DisableEmission()
     {
-        _oscClient.Send("/DisableEmission", 1);
+        SendOsc("/DisableEmission");
     }
-    */
+
+    public void RecreateOscClient()
+    {
+        CreateOscClient();
+    }
 }
