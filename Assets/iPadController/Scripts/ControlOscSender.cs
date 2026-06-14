@@ -177,6 +177,15 @@ public class ControlOscSender : MonoBehaviour
         }
     }
 
+    public void ToggleEnableEmission()
+    {
+        EnableEmission();
+    }
+    public void ToggleDisableEmission()
+    {
+        DisableEmission();
+    }
+
     public void TogglePressed()
     {
         UpdateTokkuriTypeFromToggle();

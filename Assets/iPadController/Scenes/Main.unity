@@ -1622,7 +1622,7 @@ MonoBehaviour:
       m_Calls:
       - m_Target: {fileID: 948474496}
         m_TargetAssemblyTypeName: ControlOscSender, Assembly-CSharp
-        m_MethodName: TogglePressed
+        m_MethodName: ToggleDisableEmission
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
@@ -1873,7 +1873,7 @@ MonoBehaviour:
       m_Calls:
       - m_Target: {fileID: 948474496}
         m_TargetAssemblyTypeName: ControlOscSender, Assembly-CSharp
-        m_MethodName: TogglePressed
+        m_MethodName: EnableEmission
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
@@ -2528,7 +2528,7 @@ MonoBehaviour:
   - {fileID: 571249195}
   - {fileID: 710286729}
   - {fileID: 817946641}
-  disabledSeconds: 3
+  disabledSeconds: 4
   fadeOutSeconds: 0.5
   fadeInSeconds: 1
   enabledAlpha: 1
@@ -2859,7 +2859,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ControlOscSender
   IPAddress: 192.168.0.94
-  OscPort: 9000
+  OscPort: 10000
   TokkuriType: 0
   ModelViewMode: 0
   Alignment: 0
