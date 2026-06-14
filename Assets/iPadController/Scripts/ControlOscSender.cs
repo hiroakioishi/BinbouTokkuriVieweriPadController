@@ -1,17 +1,15 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Net.Sockets;
+using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
-using OscJack;
 
 public class ControlOscSender : MonoBehaviour
 {
     [Header("OSC Settings")]
     public string IPAddress = "127.0.0.1";
     public int OscPort = 6666;
-
-    private OscClient _oscClient;
-    private bool _isQuitting = false;
 
     public enum 徳利タイプ
     {
@@ -65,110 +63,34 @@ public class ControlOscSender : MonoBehaviour
     [SerializeField] private Toggle ToggleViewMode_Shirafu;
     [SerializeField] private Toggle ToggleViewMode_Meitei;
 
-    private void Awake()
-    {
-        CreateOscClient();
-    }
-
-    private void OnDestroy()
-    {
-        DisposeOscClient();
-    }
-
-    private void OnApplicationQuit()
-    {
-        _isQuitting = true;
-        DisposeOscClient();
-    }
-
-    private void CreateOscClient()
-    {
-        DisposeOscClient();
-
-        try
-        {
-            _oscClient = new OscClient(IPAddress, OscPort);
-        }
-        catch (Exception e)
-        {
-            Debug.LogError($"OscClient の生成に失敗しました: {e.Message}");
-            _oscClient = null;
-        }
-    }
-
-    private void DisposeOscClient()
-    {
-        if (_oscClient == null)
-            return;
-
-        try
-        {
-            _oscClient.Dispose();
-        }
-        catch (Exception e)
-        {
-            Debug.LogWarning($"OscClient の破棄時に例外が発生しました: {e.Message}");
-        }
-        finally
-        {
-            _oscClient = null;
-        }
-    }
+    [Header("Send Option")]
+    [SerializeField] private bool LogSendMessage = false;
 
     private void SendOsc(string address, int value = 1)
     {
-        if (_isQuitting)
-            return;
-
-        if (_oscClient == null)
+        if (string.IsNullOrEmpty(address))
         {
-            CreateOscClient();
+            Debug.LogWarning("OSC Address が空です。");
+            return;
         }
 
-        if (_oscClient == null)
+        if (!address.StartsWith("/"))
         {
-            Debug.LogError($"OSC送信に失敗しました。OscClient が生成されていません。Address: {address}");
-            return;
+            address = "/" + address;
         }
 
         try
         {
-            _oscClient.Send(address, value);
-        }
-        catch (SocketException e)
-        {
-            Debug.LogWarning($"OSC送信時に SocketException が発生しました。OscClient を再生成します。Address: {address}, Error: {e.Message}");
+            byte[] packet = BuildOscMessage(address, value);
 
-            CreateOscClient();
-
-            if (_oscClient == null)
-                return;
-
-            try
+            using (UdpClient udpClient = new UdpClient())
             {
-                _oscClient.Send(address, value);
+                udpClient.Send(packet, packet.Length, IPAddress, OscPort);
             }
-            catch (Exception retryException)
-            {
-                Debug.LogError($"OSC再送信に失敗しました。Address: {address}, Error: {retryException.Message}");
-            }
-        }
-        catch (ObjectDisposedException e)
-        {
-            Debug.LogWarning($"OscClient がすでに破棄されていました。OscClient を再生成します。Address: {address}, Error: {e.Message}");
 
-            CreateOscClient();
-
-            if (_oscClient == null)
-                return;
-
-            try
+            if (LogSendMessage)
             {
-                _oscClient.Send(address, value);
-            }
-            catch (Exception retryException)
-            {
-                Debug.LogError($"OSC再送信に失敗しました。Address: {address}, Error: {retryException.Message}");
+                Debug.Log($"OSC Send: {address} {value} -> {IPAddress}:{OscPort}");
             }
         }
         catch (Exception e)
@@ -177,13 +99,36 @@ public class ControlOscSender : MonoBehaviour
         }
     }
 
-    public void ToggleEnableEmission()
+    private static byte[] BuildOscMessage(string address, int value)
     {
-        EnableEmission();
+        List<byte> data = new List<byte>();
+
+        AddPaddedString(data, address);
+        AddPaddedString(data, ",i");
+        AddInt32BigEndian(data, value);
+
+        return data.ToArray();
     }
-    public void ToggleDisableEmission()
+
+    private static void AddPaddedString(List<byte> data, string text)
     {
-        DisableEmission();
+        byte[] bytes = Encoding.ASCII.GetBytes(text);
+
+        data.AddRange(bytes);
+        data.Add(0);
+
+        while (data.Count % 4 != 0)
+        {
+            data.Add(0);
+        }
+    }
+
+    private static void AddInt32BigEndian(List<byte> data, int value)
+    {
+        data.Add((byte)((value >> 24) & 0xFF));
+        data.Add((byte)((value >> 16) & 0xFF));
+        data.Add((byte)((value >> 8) & 0xFF));
+        data.Add((byte)(value & 0xFF));
     }
 
     public void TogglePressed()
@@ -223,18 +168,19 @@ public class ControlOscSender : MonoBehaviour
             {
                 if (Alignment == 並べ方.指定の位置で表示)
                 {
-                    TransformDefaultOnlyMinouOnAutoPackedGridPosition();
+                    TransformDefaultOnlyMinouOnSpecificIndexPosition();
                 }
                 else if (Alignment == 並べ方.ランダムな並びで表示)
                 {
                     TransformDefaultOnlyMinouOnAutoPackedGridPosition();
                 }
+                
             }
             else if (ModelViewMode == モデル表示形式.円筒展開平面)
             {
                 if (Alignment == 並べ方.指定の位置で表示)
                 {
-                    TransformUnwrapMapOnlyMinouyakiOnAutoPackedGridPosition();
+                    TransformUnwrapMapOnlyMinouyakiOnSpecificIndexPosition();
                 }
                 else if (Alignment == 並べ方.ランダムな並びで表示)
                 {
@@ -248,7 +194,7 @@ public class ControlOscSender : MonoBehaviour
             {
                 if (Alignment == 並べ方.指定の位置で表示)
                 {
-                    TransformDefaultOnlyTanbaTachikuiyakiOnAutoPackedGridPosition();
+                    TransformDefaultOnlyTanbaTachikuiyakiOnSpecificIndexPosition();
                 }
                 else if (Alignment == 並べ方.ランダムな並びで表示)
                 {
@@ -259,12 +205,12 @@ public class ControlOscSender : MonoBehaviour
             {
                 if (Alignment == 並べ方.指定の位置で表示)
                 {
-                    TransformUnwrapMapOnlyTanbaTachikuiyakiOnAutoPackedGridPosition();
+                    TransformUnwrapMapOnlyTanbaTachikuiyakiOnSpecificIndexPosition();
                 }
                 else if (Alignment == 並べ方.ランダムな並びで表示)
                 {
                     TransformUnwrapMapOnlyTanbaTachikuiyakiOnAutoPackedGridPosition();
-                }
+                }                
             }
         }
         else if (TokkuriType == 徳利タイプ.有田焼系)
@@ -273,7 +219,7 @@ public class ControlOscSender : MonoBehaviour
             {
                 if (Alignment == 並べ方.指定の位置で表示)
                 {
-                    TransformDefaultOnlyImariAritaOnAutoPackedGridPosition();
+                    TransformDefaultOnlyImariAritaOnSpecificIndexPosition();
                 }
                 else if (Alignment == 並べ方.ランダムな並びで表示)
                 {
@@ -284,7 +230,7 @@ public class ControlOscSender : MonoBehaviour
             {
                 if (Alignment == 並べ方.指定の位置で表示)
                 {
-                    TransformUnwrapMapOnlyImariAritaOnAutoPackedGridPosition();
+                    TransformUnwrapMapOnlyImariAritaOnSpecificIndexPosition();
                 }
                 else if (Alignment == 並べ方.ランダムな並びで表示)
                 {
@@ -394,9 +340,19 @@ public class ControlOscSender : MonoBehaviour
         SendOsc("/TransformUnwrapMapOnRandomPosition");
     }
 
+    public void TransformDefaultOnlyMinouOnSpecificIndexPosition()
+    {
+        SendOsc("/TransformDefaultOnlyMinouOnSpecificIndexPosition");
+    }
+
     public void TransformDefaultOnlyMinouOnAutoPackedGridPosition()
     {
         SendOsc("/TransformDefaultOnlyMinouOnAutoPackedGridPosition");
+    }
+
+    public void TransformDefaultOnlyTanbaTachikuiyakiOnSpecificIndexPosition()
+    {
+        SendOsc("/TransformDefaultOnlyTanbaTachikuiyakiOnSpecificIndexPosition");
     }
 
     public void TransformDefaultOnlyTanbaTachikuiyakiOnAutoPackedGridPosition()
@@ -404,9 +360,19 @@ public class ControlOscSender : MonoBehaviour
         SendOsc("/TransformDefaultOnlyTanbaTachikuiyakiOnAutoPackedGridPosition");
     }
 
+    public void TransformDefaultOnlyImariAritaOnSpecificIndexPosition()
+    {
+        SendOsc("/TransformDefaultOnlyImariAritaOnSpecificIndexPosition");
+    }
+
     public void TransformDefaultOnlyImariAritaOnAutoPackedGridPosition()
     {
         SendOsc("/TransformDefaultOnlyImariAritaOnAutoPackedGridPosition");
+    }
+
+    public void TransformUnwrapMapOnlyMinouyakiOnSpecificIndexPosition()
+    {
+        SendOsc("/TransformUnwrapMapOnlyMinouyakiOnSpecificIndexPosition");
     }
 
     public void TransformUnwrapMapOnlyMinouyakiOnAutoPackedGridPosition()
@@ -414,9 +380,19 @@ public class ControlOscSender : MonoBehaviour
         SendOsc("/TransformUnwrapMapOnlyMinouyakiOnAutoPackedGridPosition");
     }
 
+    public void TransformUnwrapMapOnlyTanbaTachikuiyakiOnSpecificIndexPosition()
+    {
+        SendOsc("/TransformUnwrapMapOnlyTanbaTachikuiyakiOnSpecificIndexPosition");
+    }
+
     public void TransformUnwrapMapOnlyTanbaTachikuiyakiOnAutoPackedGridPosition()
     {
         SendOsc("/TransformUnwrapMapOnlyTanbaTachikuiyakiOnAutoPackedGridPosition");
+    }
+
+    public void TransformUnwrapMapOnlyImariAritaOnSpecificIndexPosition()
+    {
+        SendOsc("/TransformUnwrapMapOnlyImariAritaOnSpecificIndexPosition");
     }
 
     public void TransformUnwrapMapOnlyImariAritaOnAutoPackedGridPosition()
@@ -432,10 +408,5 @@ public class ControlOscSender : MonoBehaviour
     public void DisableEmission()
     {
         SendOsc("/DisableEmission");
-    }
-
-    public void RecreateOscClient()
-    {
-        CreateOscClient();
     }
 }
